@@ -1,0 +1,374 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mermaid - 3 Input</title>
+  <style>
+    :root{--gap:12px}
+    body{font-family:system-ui,Arial;margin:18px}
+    h3{margin:0 0 12px 0}
+    .row{display:flex;gap:var(--gap);align-items:flex-start}
+    .col{flex:1;min-width:0;border:1px solid #ddd;padding:10px;background:#fff;border-radius:6px}
+    textarea{width:100%;height:160px;font-family:monospace;font-size:13px;box-sizing:border-box;resize:vertical}
+    .preview{border:1px dashed #e6e6e6;padding:8px;min-height:140px;overflow:auto;background:#fbfbfb}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:8px}
+    button{padding:6px 10px}
+    .small{font-size:13px;color:#666}
+    footer{margin-top:14px;color:#666;font-size:13px}
+    @media (max-width:900px){ .row{flex-direction:column} }
+    .placeholder { color:#999; font-style:italic; }
+  </style>
+
+  <!-- Put mermaid.min.js next to this HTML -->
+  <script src="mermaid.min.js"></script>
+  <script src="canvg.min.js"></script>
+</head>
+<body>
+  <h3>Mermaid - 3 Input</h3>
+
+  <div class="controls" style="margin-bottom:8px">
+    <button id="renderAll">Render All</button>
+    <label class="small" style="margin-left:8px">Theme
+      <select id="theme" style="margin-left:6px">
+        <option value="default">default</option>
+        <option value="forest">forest</option>
+        <option value="dark">dark</option>
+        <option value="neutral">neutral</option>
+      </select>
+    </label>
+    <label class="small" style="margin-left:16px"><input id="hiRes" type="checkbox" /> High-res PNG (2x)</label>
+    <span id="status" class="small" style="margin-left:12px"></span>
+  </div>
+
+  <div class="row">
+    <div class="col" id="panel-1">
+      <strong>Diagram 1</strong>
+      <textarea id="code-1" placeholder="Paste Mermaid diagram source here"></textarea>
+      <div class="controls">
+        <button data-render="1">Render</button>
+        <button data-save="1">Save PNG</button>
+        <button data-save-svg="1">Save SVG</button>
+        <span id="msg-1" class="small"></span>
+      </div>
+      <div id="preview-1" class="preview" aria-live="polite"><div class="placeholder">No diagram rendered</div></div>
+    </div>
+
+    <div class="col" id="panel-2">
+      <strong>Diagram 2</strong>
+      <textarea id="code-2" placeholder="Paste Mermaid diagram source here"></textarea>
+      <div class="controls">
+        <button data-render="2">Render</button>
+        <button data-save="2">Save PNG</button>
+        <button data-save-svg="2">Save SVG</button>
+        <span id="msg-2" class="small"></span>
+      </div>
+      <div id="preview-2" class="preview" aria-live="polite"><div class="placeholder">No diagram rendered</div></div>
+    </div>
+
+    <div class="col" id="panel-3">
+      <strong>Diagram 3</strong>
+      <textarea id="code-3" placeholder="Paste Mermaid diagram source here"></textarea>
+      <div class="controls">
+        <button data-render="3">Render</button>
+        <button data-save="3">Save PNG</button>
+        <button data-save-svg="3">Save SVG</button>
+        <span id="msg-3" class="small"></span>
+      </div>
+      <div id="preview-3" class="preview" aria-live="polite"><div class="placeholder">No diagram rendered</div></div>
+    </div>
+  </div>
+
+  <footer>Click Render or Render All after pasting diagrams. PNG export uses Canvg when needed and falls back to SVG download on error.</footer>
+
+  <script>
+    // Utility: find mermaid and canvg available in global
+    function getMermaid() {
+      if (window.mermaid) return window.mermaid;
+      if (window.mermaidAPI) return { mermaidAPI: window.mermaidAPI, initialize: window.mermaid?.initialize, render: window.mermaid?.render };
+      return null;
+    }
+    function getCanvg() {
+      // Canvg v4 exposes window.Canvg; older builds may export different global names (try canvg)
+      return window.Canvg || window.canvg || null;
+    }
+
+    const status = document.getElementById('status');
+    const themeSel = document.getElementById('theme');
+    const hiRes = document.getElementById('hiRes');
+
+    function setStatus(s) { status.textContent = s; }
+
+    async function renderSingle(index) {
+      const codeEl = document.getElementById('code-' + index);
+      const preview = document.getElementById('preview-' + index);
+      const msg = document.getElementById('msg-' + index);
+      const code = codeEl.value.trim();
+      preview.innerHTML = '';
+      if (!code) { preview.innerHTML = '<div class="placeholder">No diagram rendered</div>'; msg.textContent = ''; return; }
+      msg.textContent = 'Rendering...';
+      const m = getMermaid();
+      if (!m) { preview.innerHTML = '<pre style="color:red">mermaid not found</pre>'; msg.textContent = 'mermaid missing'; return; }
+
+      try {
+        if (typeof m.initialize === 'function') m.initialize({ startOnLoad: false, theme: themeSel.value });
+      } catch(e) { console.warn('init failed', e); }
+
+      try {
+        if (typeof m.render === 'function') {
+          // try modern API
+          const id = 'svg-' + index + '-' + Date.now();
+          const out = m.render(id, code);
+          const result = out instanceof Promise ? await out : out;
+          const svg = (typeof result === 'object' && result.svg) ? result.svg : result;
+          preview.innerHTML = svg;
+          msg.textContent = 'Rendered';
+          return;
+        }
+        if (m.mermaidAPI && typeof m.mermaidAPI.render === 'function') {
+          const id = 'svg-' + index + '-' + Date.now();
+          m.mermaidAPI.render(id, code, (svgCode) => {
+            preview.innerHTML = svgCode;
+            msg.textContent = 'Rendered';
+          }, preview);
+          return;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'mermaid';
+        wrapper.textContent = code;
+        preview.appendChild(wrapper);
+        if (typeof m.init === 'function') { m.init(undefined, preview); msg.textContent = 'Rendered (init)'; return; }
+        msg.textContent = 'No render API found';
+      } catch (err) {
+        preview.innerHTML = '<pre style="color:crimson">Error:\\n' + String(err) + '</pre>';
+        console.error(err);
+        msg.textContent = 'Render error';
+      }
+    }
+
+    async function renderAll() {
+      setStatus('Rendering all...');
+      await Promise.all([renderSingle(1), renderSingle(2), renderSingle(3)]);
+      setStatus('All rendered');
+      setTimeout(()=> setStatus(''), 1800);
+    }
+
+    // Inline computed styles for fidelity when serializing SVG
+    function inlineStyles(svgRoot) {
+      const rootCS = getComputedStyle(document.documentElement);
+      svgRoot.style.fontFamily = rootCS.fontFamily || 'Arial, sans-serif';
+      svgRoot.style.color = rootCS.color || '#000';
+      svgRoot.querySelectorAll('*').forEach(node => {
+        const cs = window.getComputedStyle(node);
+        const props = ['fill','stroke','stroke-width','font-size','font-family','font-weight','text-anchor','opacity','color'];
+        props.forEach(p => {
+          const v = cs.getPropertyValue(p);
+          if (v) node.style.setProperty(p, v);
+        });
+      });
+    }
+
+    // Download raw SVG
+    function downloadSVGBlob(xmlString, filename) {
+      const blob = new Blob([xmlString], { type: 'image/svg+xml;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // Fast Image->Canvas method (works when no foreignObject)
+    function exportPNG_viaImage(svgEl, filename, scale, msgEl, fallbackToSVG) {
+      try {
+        const cloned = svgEl.cloneNode(true);
+        inlineStyles(cloned);
+        const svgString = new XMLSerializer().serializeToString(cloned);
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const vb = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width ? {
+              w: svgEl.viewBox.baseVal.width,
+              h: svgEl.viewBox.baseVal.height
+            } : { w: img.width, h: img.height };
+            const width = Math.max(1, Math.round(vb.w * scale));
+            const height = Math.max(1, Math.round(vb.h * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,width,height);
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((b) => {
+              if (!b) {
+                msgEl.textContent = 'Export failed; falling back to SVG';
+                URL.revokeObjectURL(url);
+                if (fallbackToSVG) downloadSVGBlob(svgString, filename.replace('.png', '.svg'));
+                return;
+              }
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(b);
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+              msgEl.textContent = 'PNG downloaded';
+            }, 'image/png');
+          } catch (err) {
+            console.error('canvas draw error', err);
+            msgEl.textContent = 'Canvas draw error; falling back to SVG';
+            URL.revokeObjectURL(url);
+            if (fallbackToSVG) {
+              const xml = new XMLSerializer().serializeToString(cloned);
+              downloadSVGBlob(xml, filename.replace('.png', '.svg'));
+            }
+          }
+        };
+        img.onerror = (e) => {
+          console.error('image load failed', e);
+          msgEl.textContent = 'Image load failed; falling back to SVG';
+          URL.revokeObjectURL(url);
+          if (fallbackToSVG) {
+            const xml = new XMLSerializer().serializeToString(cloned);
+            downloadSVGBlob(xml, filename.replace('.png', '.svg'));
+          }
+        };
+        img.src = url;
+      } catch (err) {
+        console.error(err);
+        msgEl.textContent = 'Export failed';
+      }
+    }
+
+    // Canvg path: render SVG string to canvas reliably (supports foreignObject)
+    async function exportPNG_viaCanvg(svgEl, filename, scale, msgEl) {
+      try {
+        const cloned = svgEl.cloneNode(true);
+        inlineStyles(cloned);
+        const svgString = new XMLSerializer().serializeToString(cloned);
+        const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
+        const vb = svgEl.viewBox && svgEl.viewBox.baseVal && svgEl.viewBox.baseVal.width ? {
+          w: svgEl.viewBox.baseVal.width,
+          h: svgEl.viewBox.baseVal.height
+        } : { w: svgEl.getBoundingClientRect().width || 800, h: svgEl.getBoundingClientRect().height || 600 };
+        const width = Math.max(1, Math.round(vb.w * scale));
+        const height = Math.max(1, Math.round(vb.h * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        const CanvgCtor = getCanvg();
+        if (!CanvgCtor) {
+          msgEl.textContent = 'Canvg not loaded; cannot render complex SVG. Downloading SVG instead.';
+          downloadSVGBlob(xml, filename.replace('.png', '.svg'));
+          return;
+        }
+
+        // Modern Canvg: Canvg.from(ctx, svg)
+        if (typeof CanvgCtor.from === 'function') {
+          const v = await CanvgCtor.from(ctx, xml);
+          await v.render();
+        } else if (typeof CanvgCtor === 'function') {
+          // older global API: canvg(ctx, svg)
+          const v = CanvgCtor(ctx, xml);
+          if (v && typeof v.render === 'function') await v.render();
+        } else {
+          msgEl.textContent = 'Unsupported Canvg API; downloading SVG instead.';
+          downloadSVGBlob(xml, filename.replace('.png', '.svg'));
+          return;
+        }
+
+        canvas.toBlob((b) => {
+          if (!b) { msgEl.textContent = 'Canvg export failed; saving SVG'; downloadSVGBlob(xml, filename.replace('.png', '.svg')); return; }
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(a.href);
+          msgEl.textContent = 'PNG downloaded';
+        }, 'image/png');
+      } catch (err) {
+        console.error('Canvg error', err);
+        msgEl.textContent = 'Canvg error; saving SVG';
+        const cloned = svgEl.cloneNode(true);
+        const xml = new XMLSerializer().serializeToString(cloned);
+        downloadSVGBlob(xml, filename.replace('.png', '.svg'));
+      }
+    }
+
+    // Main: pick export strategy (prefer Canvg when foreignObject present)
+    async function savePreviewPNG(index) {
+      const preview = document.getElementById('preview-' + index);
+      const msg = document.getElementById('msg-' + index);
+      const svgEl = preview.querySelector('svg');
+      if (!svgEl) { msg.textContent = 'No diagram to export'; return; }
+      msg.textContent = 'Preparing PNG...';
+      const scale = hiRes.checked ? 2 : 1;
+      const filename = 'mermaid-panel-' + index + '.png';
+
+      // Detect presence of foreignObject (common cause for Image->canvas failure)
+      const hasForeign = !!svgEl.querySelector('foreignObject');
+      const canvgPresent = !!getCanvg();
+
+      if (hasForeign && canvgPresent) {
+        // Use Canvg for reliable rasterization
+        await exportPNG_viaCanvg(svgEl, filename, scale, msg);
+      } else if (hasForeign && !canvgPresent) {
+        // No Canvg: fall back to downloading raw SVG
+        msg.textContent = 'Diagram contains foreignObject; Canvg missing. Downloading SVG instead.';
+        const cloned = svgEl.cloneNode(true);
+        inlineStyles(cloned);
+        const xml = new XMLSerializer().serializeToString(cloned);
+        downloadSVGBlob('<?xml version="1.0" encoding="UTF-8"?>\n' + xml, filename.replace('.png', '.svg'));
+      } else {
+        // Fast path: Image -> canvas
+        exportPNG_viaImage(svgEl, filename, scale, msg, true);
+      }
+    }
+
+    // Direct SVG download button handler
+    function savePreviewSVG(index) {
+      const preview = document.getElementById('preview-' + index);
+      const msg = document.getElementById('msg-' + index);
+      const svgEl = preview.querySelector('svg');
+      if (!svgEl) { msg.textContent = 'No diagram to export'; return; }
+      msg.textContent = 'Preparing SVG...';
+      const cloned = svgEl.cloneNode(true);
+      inlineStyles(cloned);
+      const xml = new XMLSerializer().serializeToString(cloned);
+      downloadSVGBlob('<?xml version="1.0" encoding="UTF-8"?>\n' + xml, 'mermaid-panel-' + index + '.svg');
+      msg.textContent = 'SVG downloaded';
+    }
+
+    // Wire buttons
+    document.querySelectorAll('button[data-render]').forEach(btn => {
+      btn.addEventListener('click', () => renderSingle(btn.getAttribute('data-render')));
+    });
+    document.querySelectorAll('button[data-save]').forEach(btn => {
+      btn.addEventListener('click', () => savePreviewPNG(btn.getAttribute('data-save')));
+    });
+    document.querySelectorAll('button[data-save-svg]').forEach(btn => {
+      btn.addEventListener('click', () => savePreviewSVG(btn.getAttribute('data-save-svg')));
+    });
+    document.getElementById('renderAll').addEventListener('click', renderAll);
+
+    // On load: verify mermaid present, but do not auto-render empty inputs
+    window.addEventListener('load', () => {
+      if (!getMermaid()) {
+        setStatus('mermaid not detected; ensure mermaid.min.js is present (UMD/global bundle)');
+      }
+      if (!getCanvg()) {
+        // not fatal; PNG fallback to SVG will be used for complex diagrams
+        console.warn('Canvg not detected; treemap/foreignObject exports will download SVG instead of PNG without canvg.min.js loaded');
+      }
+    });
+  </script>
+</body>
+</html>

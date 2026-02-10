@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mermaid Offline — Single Editor</title>
+  <style>
+    :root{
+      --gap:12px;
+      --panel:#f6f7fb;
+      --ui-font:system-ui,Segoe UI,Roboto,Arial;
+      --textarea-bg:#ffffff;
+      --textarea-fg:#111111;
+    }
+    html,body{height:100%;margin:0;font-family:var(--ui-font);background:#fff}
+    .wrap{display:flex;flex-direction:column;gap:12px;padding:12px;height:100%}
+    header{display:flex;justify-content:space-between;align-items:center}
+    .center{max-width:1100px;margin:0 auto;width:100%}
+    .card{background:var(--panel);padding:12px;border-radius:8px;display:flex;flex-direction:column;gap:10px}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .controls{display:flex;gap:8px;align-items:center}
+    textarea{
+      min-height:220px;width:100%;resize:vertical;border-radius:6px;padding:10px;
+      background:var(--textarea-bg);color:var(--textarea-fg);border:1px solid #d0d0d0;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;
+    }
+    button,select{padding:6px 10px;border-radius:6px;border:1px solid #cfcfcf;background:#fff;cursor:pointer}
+    .render-area{background:#fff;border-radius:6px;padding:10px;overflow:auto;min-height:140px;border:1px solid #e6e6e6}
+    .note{font-size:13px;color:#333;text-align:center}
+    @media (max-width:800px){ .row{flex-direction:column;align-items:stretch} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="center">
+      <h2>Mermaid Offline — Single Editor</h2>
+      <div class="note">Place <strong>mermaid.min.js</strong> beside this HTML and open it locally</div>
+    </header>
+
+    <main class="center">
+      <div class="card">
+        <div class="row">
+          <strong>Editor</strong>
+          <div class="controls">
+            <select id="theme"><option>default</option><option>forest</option><option>dark</option><option>neutral</option></select>
+            <button id="render">Render</button>
+            <button id="clear">Clear</button>
+            <label for="scale">Scale</label>
+            <select id="scale">
+              <option value="1">1x</option>
+              <option value="2">2x</option>
+              <option value="3">3x</option>
+              <option value="4">4x</option>
+              <option value="6">6x</option>
+            </select>
+            <button id="saveSvg">Save SVG</button>
+            <button id="savePng">Save PNG</button>
+          </div>
+        </div>
+
+        <textarea id="code" spellcheck="false" placeholder="Enter Mermaid diagram source here"></textarea>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="note">Rendered output</div>
+            <div style="font-size:13px;color:#666">Use Ctrl/Cmd+Enter to render</div>
+          </div>
+          <div class="render-area" id="out"><div id="renderCard">No render yet</div></div>
+        </div>
+      </div>
+
+      <div style="margin-top:10px" class="note">Choose a scale for higher-resolution PNG export. Larger values produce larger files.</div>
+    </main>
+  </div>
+
+  <!-- Mermaid UMD build (place next to this HTML) -->
+  <script src="./mermaid.min.js"></script>
+
+  <script>
+    if (typeof mermaid === 'undefined') {
+      document.getElementById('renderCard').innerText = 'mermaid.min.js not found. Place mermaid.min.js next to this HTML';
+      throw new Error('mermaid not found');
+    }
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+
+    function downloadBlob(blob, filename) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    }
+
+    // Fetch and convert resource to data URL (CORS required)
+    async function fetchAsDataURL(url) {
+      const resp = await fetch(url, { mode: 'cors' });
+      if (!resp.ok) throw new Error('Failed to fetch ' + url + ' status ' + resp.status);
+      const blob = await resp.blob();
+      return await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(blob);
+      });
+    }
+
+    // Inline images, remove foreignObject, strip external CSS imports
+    async function inlineSvgImages(svgText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgText, 'image/svg+xml');
+      const svg = doc.documentElement;
+
+      // remove foreignObject elements
+      const foreigns = Array.from(svg.querySelectorAll('foreignObject'));
+      foreigns.forEach(el => el.parentNode && el.parentNode.removeChild(el));
+
+      // inline <image> elements
+      const images = Array.from(svg.querySelectorAll('image'));
+      for (const img of images) {
+        const href = img.getAttribute('href') || img.getAttribute('xlink:href') || img.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+        if (!href) continue;
+        if (href.startsWith('data:')) continue;
+        if (/^data:|^blob:|^javascript:/i.test(href)) continue;
+        try {
+          const dataUrl = await fetchAsDataURL(href);
+          img.setAttribute('href', dataUrl);
+          img.removeAttribute('xlink:href');
+        } catch (err) {
+          throw new Error('Could not inline image: ' + href + ' — ' + err.message);
+        }
+      }
+
+      // remove external <link> tags and strip @import rules from <style>
+      const links = Array.from(doc.querySelectorAll('link,style'));
+      for (const node of links) {
+        if (node.tagName.toLowerCase() === 'link') node.parentNode && node.parentNode.removeChild(node);
+        if (node.tagName.toLowerCase() === 'style') {
+          const txt = node.textContent.replace(/@import\s+(?:url\()?["']?[^"')]+["']?\)?\s*;?/g, '');
+          node.textContent = txt;
+        }
+      }
+
+      if (!svg.getAttribute('xmlns')) svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      if (!svg.getAttribute('xmlns:xlink')) svg.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+      if (!svg.getAttribute('width') || !svg.getAttribute('height')) {
+        if (!svg.getAttribute('viewBox')) {
+          svg.setAttribute('viewBox', '0 0 800 600');
+        }
+      }
+
+      const serializer = new XMLSerializer();
+      return serializer.serializeToString(doc);
+    }
+
+    // Convert sanitized SVG to PNG Blob with user-selected scale
+    async function svgToPngBlob(svgText, scale = 1) {
+      try {
+        svgText = await inlineSvgImages(svgText);
+      } catch (err) {
+        throw new Error('SVG contains external resources that could not be inlined. Remove or replace them. Details: ' + err.message);
+      }
+
+      if (!svgText.match(/^<\?xml/)) {
+        svgText = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgText;
+      }
+
+      return await new Promise((resolve, reject) => {
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        const img = new Image();
+
+        img.onload = function () {
+          try {
+            // Use naturalWidth/naturalHeight which reflect SVG intrinsic pixel size
+            const naturalW = img.naturalWidth || img.width || 800;
+            const naturalH = img.naturalHeight || img.height || 600;
+
+            // Final pixel dimensions = natural size * scale
+            const finalW = Math.max(1, Math.floor(naturalW * scale));
+            const finalH = Math.max(1, Math.floor(naturalH * scale));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = finalW;
+            canvas.height = finalH;
+            const ctx = canvas.getContext('2d');
+
+            // Optional white background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, finalW, finalH);
+
+            // Draw scaled to final canvas size
+            ctx.drawImage(img, 0, 0, finalW, finalH);
+
+            canvas.toBlob(function (blob) {
+              URL.revokeObjectURL(url);
+              if (blob) resolve(blob);
+              else reject(new Error('Canvas toBlob returned null. Possible canvas taint or browser restriction.'));
+            }, 'image/png');
+          } catch (e) {
+            URL.revokeObjectURL(url);
+            reject(e);
+          }
+        };
+
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error('Failed to load SVG into image. SVG may contain unsupported or external elements (foreignObject, external fonts, cross-origin images).'));
+        };
+
+        img.src = url;
+      });
+    }
+
+    // Render mermaid and return SVG string
+    async function renderMermaidToSvg(code, theme) {
+      const uid = 'm' + Math.random().toString(36).slice(2,9);
+      try {
+        const res = mermaid.render(uid, code, undefined, { theme: theme || 'default' });
+        const result = await Promise.resolve(res);
+        const svg = (typeof result === 'string') ? result : (result && result.svg) || '';
+        return svg;
+      } catch (err) {
+        try {
+          const res2 = mermaid.render(uid, code);
+          return (res2 && res2.svg) || res2 || '';
+        } catch (e) {
+          throw e;
+        }
+      }
+    }
+
+    // UI wiring
+    const codeEl = document.getElementById('code');
+    const renderBtn = document.getElementById('render');
+    const clearBtn = document.getElementById('clear');
+    const saveSvgBtn = document.getElementById('saveSvg');
+    const savePngBtn = document.getElementById('savePng');
+    const themeSelect = document.getElementById('theme');
+    const scaleSelect = document.getElementById('scale');
+    const outCard = document.getElementById('renderCard');
+
+    renderBtn.addEventListener('click', async () => {
+      const source = codeEl.value.trim();
+      if (!source) { outCard.textContent = 'No source to render'; return; }
+      outCard.textContent = 'Rendering...';
+      try {
+        const svg = await renderMermaidToSvg(source, themeSelect.value);
+        outCard.innerHTML = svg || '<pre style="color:#b33">No SVG generated</pre>';
+      } catch (err) {
+        outCard.innerHTML = '<pre style="color:#b33">Render error: ' + (err && err.message || err) + '</pre>';
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      codeEl.value = '';
+      outCard.textContent = 'No render yet';
+    });
+
+    saveSvgBtn.addEventListener('click', async () => {
+      const source = codeEl.value.trim();
+      if (!source) { alert('No source to export'); return; }
+      try {
+        const svg = await renderMermaidToSvg(source, themeSelect.value);
+        if (!svg) throw new Error('No SVG produced');
+        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        downloadBlob(blob, 'diagram.svg');
+      } catch (err) {
+        alert('SVG export failed: ' + (err && err.message || err));
+      }
+    });
+
+    savePngBtn.addEventListener('click', async () => {
+      const source = codeEl.value.trim();
+      if (!source) { alert('No source to export'); return; }
+      const scale = Math.max(1, Number(scaleSelect.value) || 1);
+      try {
+        const svg = await renderMermaidToSvg(source, themeSelect.value);
+        if (!svg) throw new Error('No SVG produced');
+        const pngBlob = await svgToPngBlob(svg, scale);
+        downloadBlob(pngBlob, 'diagram-' + scale + 'x.png');
+      } catch (err) {
+        alert('PNG export failed: ' + (err && err.message || err));
+      }
+    });
+
+    codeEl.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') renderBtn.click();
+    });
+
+    // Do not auto-render on load; input is intentionally empty
+  </script>
+</body>
+</html>
