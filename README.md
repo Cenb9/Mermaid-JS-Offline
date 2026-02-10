@@ -1,10 +1,11 @@
 # Mermaid-JS-Offline
-Offline Mermaid FlowChart & Diagrams Maker
-
-Put html & mermaid.min.js in a folder & open the html.
+Offline Mermaid FlowChart & Diagram Maker
 
 mermaid.min.js - https://cdn.jsdelivr.net/npm/mermaid@latest/
 
+Put html & mermaid.min.js in a folder & open the html.
+
+# Preview - 
 ![Diagram](https://github.com/Cenb9/Mermaid-JS-Offline/blob/main/Mermaid%20Diagrams%20Preview.jpg?raw=true)
 
 
