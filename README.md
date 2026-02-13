@@ -1,17 +1,17 @@
 # Mermaid-JS-Offline
 Offline Mermaid FlowChart & Diagram Maker
 
-Download - https://github.com/Cenb9/Mermaid-JS-Offline/releases
+* Download - https://github.com/Cenb9/Mermaid-JS-Offline/releases
 
-Put html & mermaid.min.js in a folder & open the html.
+* Put html & mermaid.min.js in a folder & open the html.
 
-mermaid.min.js Download - https://cdn.jsdelivr.net/npm/mermaid@latest/
+* mermaid.min.js Download - https://cdn.jsdelivr.net/npm/mermaid@latest/
 
 # Preview - 
 ![Diagram](https://github.com/Cenb9/Mermaid-JS-Offline/blob/main/Mermaid%20Diagrams%20Preview.jpg?raw=true)
 
 
-🔹 Flowcharts = 
+## 🔹 Flowcharts = 
 
 	✦ 1
 ```
@@ -39,7 +39,7 @@ flowchart TD
   D --> E
 ```
 
-🔹 Pie chart = 
+## 🔹 Pie chart = 
 ```
 pie title What Voldemort doesn't have?
          "FRIENDS" : 2
@@ -64,7 +64,7 @@ pie showData
     "Iron" :  5
 ```
 
-🔹 Gantt (horizontal bar chart) = 
+## 🔹 Gantt (horizontal bar chart) = 
 ```
 gantt
     title Git Issues - days since last update
@@ -83,7 +83,7 @@ gantt
     5    : 0, 5
 ```
 
-🔹 Treemap (shows proportions & subcategories) = 
+## 🔹 Treemap (shows proportions & subcategories) = 
 ```
 treemap-beta
 "Products"
@@ -96,7 +96,7 @@ treemap-beta
         "Women's": 40
 ```
 
-🔹 Sankey (shows flow from one set of values to another) = 
+## 🔹 Sankey (shows flow from one set of values to another) = 
 ```
 sankey
 
@@ -119,7 +119,7 @@ Living, Food, 550
 Living, Transport, 150
 ```
 
-🔹 Mindmap (shows hierarchy / relationships among pieces) (only SVG export) = 
+## 🔹 Mindmap (shows hierarchy / relationships among pieces) (only SVG export) = 
 ```
 mindmap
     root((Mind Map))
@@ -133,7 +133,7 @@ mindmap
             Database
 ```
 
-🔹 Kanban board (only SVG export) = 
+## 🔹 Kanban board (only SVG export) = 
 ```
 kanban
   Todo
@@ -148,7 +148,7 @@ kanban
     id3[Update DB function]@{ ticket: MC-2037, assigned: knsv, priority: 'High' }
 ```
 
-🔹 Class diagrams (shows the structure of a system) (only SVG export) = 
+## 🔹 Class diagrams (shows the structure of a system) (only SVG export) = 
 
 	✦ 1
 ```
